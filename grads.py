@@ -6,10 +6,13 @@ import seaborn as sns
 
 from torchviz import make_dot
 
+from datasets import load_dataset
+
 from transformer_lens import HookedTransformer
+import transformer_lens.utils as utils
 
 
-def get_cache(model: HookedTransformer, text):
+def get_cache(model: HookedTransformer, toks):
     cache = dict()
 
     def save_hook(value, hook):
@@ -18,12 +21,12 @@ def get_cache(model: HookedTransformer, text):
         return value
 
     hooks = [(f'blocks.{layer_idx}.hook_resid_post', save_hook) for layer_idx in range(model.cfg.n_layers)]
-    model.run_with_hooks(text, fwd_hooks=hooks)
+    model.run_with_hooks(toks, fwd_hooks=hooks)
     return cache
 
 
-def compute_grads(model: HookedTransformer, text, position, layer):
-    cache = get_cache(model, text)
+def compute_grads(model: HookedTransformer, toks, position, layer):
+    cache = get_cache(model, toks)
     input_length = cache['blocks.0.hook_resid_post'].shape[1]
 
     h = cache[f'blocks.{layer}.hook_resid_post'][0, position, :]
@@ -37,10 +40,11 @@ def compute_grads(model: HookedTransformer, text, position, layer):
         # compute magnitude of grads per position
         grads_h_wrt_others[layer_idx] = grads[0].abs().sum(dim=-1)
     
-    return grads_h_wrt_others
+    data = np.array([grad.numpy() for grad in reversed(grads_h_wrt_others)])
+    return data
 
-def compute_wrt_h(model: HookedTransformer, text, position, layer):
-    cache = get_cache(model, text)
+def compute_wrt_h(model: HookedTransformer, toks, position, layer):
+    cache = get_cache(model, toks)
     input_length = cache['blocks.0.hook_resid_post'].shape[1]
 
     res = torch.zeros(model.cfg.n_layers, input_length)
@@ -59,18 +63,33 @@ def compute_wrt_h(model: HookedTransformer, text, position, layer):
     return res.numpy()
 
 
+position = 10
+layer = 2
 model = HookedTransformer.from_pretrained('gelu-4l', device='cpu')
-text = "The cat sat on the mat."
 
-others_wrt_h = compute_wrt_h(model, text, position=2, layer=1)[::-1]
-h_wrt_others = compute_grads(model, text, position=2, layer=1)
+pile_data = load_dataset("NeelNanda/pile-10k", split="train")
+dataset = utils.tokenize_and_concatenate(pile_data, model.tokenizer)
+
+data = None
+for i, d in enumerate(dataset):
+    if i == 10:
+        break
+    toks = d['tokens'][:20]
+    print(model.tokenizer.decode(toks))
+    others_wrt_h = compute_wrt_h(model, toks, position=position, layer=layer)[::-1]
+    h_wrt_others = compute_grads(model, toks, position=position, layer=layer)
+
+    if data is None: # ugly
+        data = others_wrt_h + h_wrt_others
+    else:
+        data += others_wrt_h + h_wrt_others
 
 
-data = np.array([grad.numpy() for grad in reversed(h_wrt_others)])
-data += others_wrt_h
+# Plot the heatmap
+# data = np.array([grad.numpy() for grad in reversed(h_wrt_others)])
+# data += others_wrt_h
 positions = range(data.shape[1])
 layers = range(len(h_wrt_others) - 1, -1, -1) # Reversed order of layers
-# Plot the heatmap
 plt.figure(figsize=(10, 6))
 sns.heatmap(data, xticklabels=positions, yticklabels=layers, cmap='YlGnBu')
 plt.xlabel('Position')
