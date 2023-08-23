@@ -9,21 +9,21 @@ from torchviz import make_dot
 from transformer_lens import HookedTransformer
 
 
-
-def compute_grads(model: HookedTransformer, text, position, layer):
+def get_cache(model: HookedTransformer, text):
     cache = dict()
+
     def save_hook(value, hook):
         value.retain_grad()
         cache[hook.name] = value
         return value
 
-    hooks = []
-    for layer_idx in range(model.cfg.n_layers):
-        hooks += [(f'blocks.{layer_idx}.hook_resid_post', save_hook)]
+    hooks = [(f'blocks.{layer_idx}.hook_resid_post', save_hook) for layer_idx in range(model.cfg.n_layers)]
+    model.run_with_hooks(text, fwd_hooks=hooks)
+    return cache
 
-    with model.hooks(fwd_hooks=hooks):
-        model(text)
-    
+
+def compute_grads(model: HookedTransformer, text, position, layer):
+    cache = get_cache(model, text)
     input_length = cache['blocks.0.hook_resid_post'].shape[1]
 
     h = cache[f'blocks.{layer}.hook_resid_post'][0, position, :]
@@ -40,24 +40,10 @@ def compute_grads(model: HookedTransformer, text, position, layer):
     return grads_h_wrt_others
 
 def compute_wrt_h(model: HookedTransformer, text, position, layer):
-    cache = dict()
-    def save_hook(value, hook):
-        value.retain_grad()
-        cache[hook.name] = value
-        return value
-
-    hooks = []
-    for layer_idx in range(model.cfg.n_layers):
-        hooks += [(f'blocks.{layer_idx}.hook_resid_post', save_hook)]
-
-    with model.hooks(fwd_hooks=hooks):
-        model(text)
-    
+    cache = get_cache(model, text)
     input_length = cache['blocks.0.hook_resid_post'].shape[1]
 
-    h = cache[f'blocks.{layer}.hook_resid_post'][0, position, :]
     res = torch.zeros(model.cfg.n_layers, input_length)
-
     for layer_idx in range(layer+1, model.cfg.n_layers): # layer+1, ..., n_layers-1
         for pos_idx in range(input_length):
             final = cache[f'blocks.{layer_idx}.hook_resid_post'][0, pos_idx, :].abs().sum()
@@ -76,10 +62,7 @@ def compute_wrt_h(model: HookedTransformer, text, position, layer):
 model = HookedTransformer.from_pretrained('gelu-4l', device='cpu')
 text = "The cat sat on the mat."
 
-others_wrt_h = compute_wrt_h(model, text, position=2, layer=1)
-# reverse 0th dim of others_wrt_h to align with the order of layers
-others_wrt_h = others_wrt_h[::-1]
-
+others_wrt_h = compute_wrt_h(model, text, position=2, layer=1)[::-1]
 h_wrt_others = compute_grads(model, text, position=2, layer=1)
 
 
@@ -94,19 +77,3 @@ plt.xlabel('Position')
 plt.ylabel('Layer')
 plt.title('Gradients through h')
 plt.show()
-
-"""
-# Concatenating the two gradient data
-full_data = np.array([grad.numpy() for grad in reversed(h_wrt_others + others_wrt_h)])
-positions = range(full_data.shape[1])
-# Reversed order of layers to align with the previous part
-full_layers = range(len(h_wrt_others + others_wrt_h) - 1, -1, -1) 
-
-# Plotting the full heatmap
-plt.figure(figsize=(10, 6))
-sns.heatmap(full_data, xticklabels=positions, yticklabels=full_layers, cmap='YlGnBu')
-plt.xlabel('Position')
-plt.ylabel('Layer')
-plt.title('Gradients of h with respect to Other States & Gradients of Other States with respect to h')
-plt.show()
-"""
