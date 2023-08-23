@@ -22,13 +22,11 @@ def get_cache(model: HookedTransformer, toks):
     model.run_with_hooks(toks, fwd_hooks=hooks)
     return cache
 
-
 def zero_grads(model: HookedTransformer, cache):
     model.zero_grad()
     for c in cache.values():
         if c.grad is not None:
             c.grad.zero_()
-
 
 def compute_grads(model: HookedTransformer, toks, position, layer):
     cache = get_cache(model, toks)
@@ -36,6 +34,7 @@ def compute_grads(model: HookedTransformer, toks, position, layer):
     input_length = cache['blocks.0.hook_resid_post'].shape[1]
 
     h = cache[f'blocks.{layer}.hook_resid_post'][0, position, :]
+    h = h / torch.norm(h)
 
     # Compute gradients of h wrt every state that affects h.
     h.abs().sum().backward(retain_graph=True)
@@ -57,7 +56,9 @@ def compute_wrt_h(model: HookedTransformer, toks, position, layer):
     res = torch.zeros(model.cfg.n_layers, input_length)
     for layer_idx in range(layer+1, model.cfg.n_layers): # layer+1, ..., n_layers-1
         for pos_idx in range(input_length):
-            final = cache[f'blocks.{layer_idx}.hook_resid_post'][0, pos_idx, :].abs().sum()
+            final = cache[f'blocks.{layer_idx}.hook_resid_post'][0, pos_idx, :]
+            final = final / torch.norm(final)
+            final = final.abs().sum()
             final.backward(retain_graph=True)
 
             g = cache[f'blocks.{layer}.hook_resid_post'].grad[0, position, :].abs().sum()
