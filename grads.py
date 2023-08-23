@@ -1,7 +1,9 @@
+# %%
 import torch
 
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.colors import ListedColormap
 import seaborn as sns
 
 from datasets import load_dataset
@@ -69,16 +71,16 @@ def compute_wrt_h(model: HookedTransformer, toks, position, layer):
 
 
 position = 10
-layer = 1
-model = HookedTransformer.from_pretrained('gelu-4l', device='cpu')
-# model = HookedTransformer.from_pretrained('gpt2-small', device='cpu')
+layer = 5
+# model = HookedTransformer.from_pretrained('gelu-4l', device='cpu')
+model = HookedTransformer.from_pretrained('gpt2-small', device='cpu')
 
 pile_data = load_dataset("NeelNanda/pile-10k", split="train")
 dataset = utils.tokenize_and_concatenate(pile_data, model.tokenizer)
 
 data = None
 for i, d in enumerate(dataset):
-    if i == 5:
+    if i == 1:
         break
     toks = d['tokens'][:20]
     print(model.tokenizer.decode(toks))
@@ -90,15 +92,24 @@ for i, d in enumerate(dataset):
     else:
         data += others_wrt_h + h_wrt_others
 
-
+# %%
 # Plot the heatmap
-# data = np.array([grad.numpy() for grad in reversed(h_wrt_others)])
-# data += others_wrt_h
+mask = np.zeros_like(data, dtype=bool)
+mask[layer, position] = True
+mask = np.flip(mask, axis=0)
+
+cmap = sns.color_palette("YlGnBu", as_cmap=True)
+custom_cmap = ListedColormap(cmap(np.arange(cmap.N)))
+custom_cmap.set_bad(color='lightgrey')
+
 positions = range(data.shape[1])
 layers = range(len(h_wrt_others) - 1, -1, -1) # Reversed order of layers
 plt.figure(figsize=(10, 6))
-sns.heatmap(data, xticklabels=positions, yticklabels=layers, cmap='YlGnBu')
+sns.heatmap(data, xticklabels=positions, yticklabels=layers, cmap=custom_cmap, mask=mask)
+
 plt.xlabel('Position')
 plt.ylabel('Layer')
 plt.title('Gradients through h')
 plt.show()
+
+# %%
