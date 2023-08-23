@@ -4,8 +4,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-from torchviz import make_dot
-
 from datasets import load_dataset
 
 from transformer_lens import HookedTransformer
@@ -25,8 +23,16 @@ def get_cache(model: HookedTransformer, toks):
     return cache
 
 
+def zero_grads(model: HookedTransformer, cache):
+    model.zero_grad()
+    for c in cache.values():
+        if c.grad is not None:
+            c.grad.zero_()
+
+
 def compute_grads(model: HookedTransformer, toks, position, layer):
     cache = get_cache(model, toks)
+    zero_grads(model, cache)
     input_length = cache['blocks.0.hook_resid_post'].shape[1]
 
     h = cache[f'blocks.{layer}.hook_resid_post'][0, position, :]
@@ -45,6 +51,7 @@ def compute_grads(model: HookedTransformer, toks, position, layer):
 
 def compute_wrt_h(model: HookedTransformer, toks, position, layer):
     cache = get_cache(model, toks)
+    zero_grads(model, cache)
     input_length = cache['blocks.0.hook_resid_post'].shape[1]
 
     res = torch.zeros(model.cfg.n_layers, input_length)
@@ -55,24 +62,22 @@ def compute_wrt_h(model: HookedTransformer, toks, position, layer):
 
             g = cache[f'blocks.{layer}.hook_resid_post'].grad[0, position, :].abs().sum()
             res[layer_idx, pos_idx] = g
+            zero_grads(model, cache)
 
-            model.zero_grad()
-            for c in cache.values():
-                if c.grad is not None:
-                    c.grad.zero_()
     return res.numpy()
 
 
 position = 10
-layer = 2
+layer = 1
 model = HookedTransformer.from_pretrained('gelu-4l', device='cpu')
+# model = HookedTransformer.from_pretrained('gpt2-small', device='cpu')
 
 pile_data = load_dataset("NeelNanda/pile-10k", split="train")
 dataset = utils.tokenize_and_concatenate(pile_data, model.tokenizer)
 
 data = None
 for i, d in enumerate(dataset):
-    if i == 10:
+    if i == 5:
         break
     toks = d['tokens'][:20]
     print(model.tokenizer.decode(toks))
