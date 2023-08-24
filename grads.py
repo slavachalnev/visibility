@@ -7,6 +7,9 @@ import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap
 import seaborn as sns
 
+import json
+import time
+
 from datasets import load_dataset
 
 from transformer_lens import HookedTransformer
@@ -25,11 +28,13 @@ def get_cache(model: HookedTransformer, toks):
     model.run_with_hooks(toks, fwd_hooks=hooks)
     return cache
 
+
 def zero_grads(model: HookedTransformer, cache):
     model.zero_grad()
     for c in cache.values():
         if c.grad is not None:
             c.grad.zero_()
+
 
 def compute_grads(model: HookedTransformer, toks, position, layer):
     cache = get_cache(model, toks)
@@ -52,6 +57,7 @@ def compute_grads(model: HookedTransformer, toks, position, layer):
     return data
 
 def compute_wrt_h(model: HookedTransformer, toks, position, layer):
+
     cache = get_cache(model, toks)
     zero_grads(model, cache)
     input_length = cache['blocks.0.hook_resid_post'].shape[1]
@@ -97,18 +103,36 @@ def compute_heatmap(model: HookedTransformer,
 
 
 
-# model = HookedTransformer.from_pretrained('gelu-4l', device='cpu')
-model = HookedTransformer.from_pretrained('gpt2-small', device='cpu')
+model = HookedTransformer.from_pretrained('gelu-4l', device='cpu')
+# model = HookedTransformer.from_pretrained('gpt2-small', device='cpu')
 
 pile_data = load_dataset("NeelNanda/pile-10k", split="train")
 dataset = utils.tokenize_and_concatenate(pile_data, model.tokenizer)
 
+n_layers = model.cfg.n_layers
+n_positions = 20
 
+# %%
+# Compute the heatmap for every layer, position
+result = np.zeros((n_layers, n_positions, n_layers, n_positions))
+for layer in range(n_layers):
+    for position in range(n_positions):
+        t0 = time.time()
+        heatmap = compute_heatmap(model, dataset, position=position, layer=layer, average_over=1, toks_len=n_positions)
+        print(f'Layer {layer}, position {position} took {time.time() - t0:.2f} seconds')
+        result[layer, position] = heatmap
+
+# save the result as json
+with open('page/heatmaps.json', 'w') as f:
+    result = np.flip(result, axis=2)
+    json.dump(result.tolist(), f)
+
+
+
+# %%
 layer = 5
 position = 10
-data = compute_heatmap(model, dataset, position=position, layer=layer, average_over=1, toks_len=20)
-n_layers = model.cfg.n_layers
-
+data = compute_heatmap(model, dataset, position=position, layer=layer, average_over=1, toks_len=n_positions)
 
 # %%
 # Plot the heatmap

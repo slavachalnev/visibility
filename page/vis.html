@@ -27,50 +27,10 @@
 
     <script>
 
-        // var m = 3, n = 3;
-
-        // // Example heatmap data for each point, m * n m * n arrays
-        // var exampleHeatmaps = [
-        //     [[1, 2, 3], [4, 5, 6], [7, 8, 9]],
-        //     [[2, 3, 4], [5, 6, 7], [8, 9, 10]],
-        //     [[3, 4, 5], [6, 7, 8], [9, 10, 11]],
-
-        //     [[0, 0, 0], [4, 0, 0], [0, 0, 0]],
-        //     [[2, 3, 4], [0, 6, 0], [0, 0, 0]],
-        //     [[3, 4, 5], [6, 7, 8], [9, 10, 11]],
-
-        //     [[1, 2, 3], [4, 5, 6], [7, 8, 9]],
-        //     [[2, 3, 4], [5, 6, 7], [8, 9, 10]],
-        //     [[3, 4, 5], [6, 7, 8], [9, 10, 11]],
-        // ];
-
-        // // Initial heatmap data (can be set to any default value)
-        // var initialHeatmapData = [
-        //     [1, 2, 3],
-        //     [4, 5, 6],
-        //     [7, 8, 9]
-        // ];
-
-        // // Plot the main heatmap
-        // var mainHeatmap = {
-        //     z: initialHeatmapData,
-        //     type: 'heatmap',
-        //     hoverinfo: 'none'
-        // };
-
-        // Plotly.newPlot('heatmap-container', [mainHeatmap]);
-
-        // // Attach hover event to the main heatmap
-        // document.getElementById('heatmap-container').on('plotly_hover', function(data) {
-        //     var i = data.points[0].y;
-        //     var j = data.points[0].x;
-        //     mainHeatmap.z = exampleHeatmaps[i * m + j]; // Update the z-data with the hovered heatmap
-        //     Plotly.react('heatmap-container', [mainHeatmap]); // Re-render the plot with the new data
-        // });
         fetch('heatmaps.json')
             .then(response => response.json())
             .then(data => {
-                var m = 3, n = 3; // Update with your actual dimensions
+                var m = 4, n = 20; // Update with your actual dimensions
 
                 // Initial heatmap data (can be set to any default value)
                 var initialHeatmapData = data[0][0];
