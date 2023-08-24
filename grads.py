@@ -1,5 +1,6 @@
 # %%
 import torch
+from torch.utils.data import Dataset
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -70,27 +71,44 @@ def compute_wrt_h(model: HookedTransformer, toks, position, layer):
     return res.numpy()
 
 
-position = 10
-layer = 5
+def compute_heatmap(model: HookedTransformer,
+                    dataset: Dataset,
+                    position: int,
+                    layer: int,
+                    average_over: int = 1,
+                    toks_len: int = 20):
+    n_layers = model.cfg.n_layers
+    heatmap = np.zeros((n_layers, toks_len))
+    
+    for i, d in enumerate(dataset):
+        if i == average_over:
+            break
+
+        # Truncate tokens to the specified length
+        toks = d['tokens'][:toks_len]
+
+        others_wrt_h = compute_wrt_h(model, toks, position=position, layer=layer)[::-1]
+        h_wrt_others = compute_grads(model, toks, position=position, layer=layer)
+
+        # Accumulate gradients
+        heatmap += others_wrt_h + h_wrt_others
+
+    return heatmap
+
+
+
 # model = HookedTransformer.from_pretrained('gelu-4l', device='cpu')
 model = HookedTransformer.from_pretrained('gpt2-small', device='cpu')
 
 pile_data = load_dataset("NeelNanda/pile-10k", split="train")
 dataset = utils.tokenize_and_concatenate(pile_data, model.tokenizer)
 
-data = None
-for i, d in enumerate(dataset):
-    if i == 1:
-        break
-    toks = d['tokens'][:20]
-    print(model.tokenizer.decode(toks))
-    others_wrt_h = compute_wrt_h(model, toks, position=position, layer=layer)[::-1]
-    h_wrt_others = compute_grads(model, toks, position=position, layer=layer)
 
-    if data is None: # ugly
-        data = others_wrt_h + h_wrt_others
-    else:
-        data += others_wrt_h + h_wrt_others
+layer = 5
+position = 10
+data = compute_heatmap(model, dataset, position=position, layer=layer, average_over=1, toks_len=20)
+n_layers = model.cfg.n_layers
+
 
 # %%
 # Plot the heatmap
@@ -103,7 +121,7 @@ custom_cmap = ListedColormap(cmap(np.arange(cmap.N)))
 custom_cmap.set_bad(color='lightgrey')
 
 positions = range(data.shape[1])
-layers = range(len(h_wrt_others) - 1, -1, -1) # Reversed order of layers
+layers = range(n_layers - 1, -1, -1) # Reversed order of layers
 plt.figure(figsize=(10, 6))
 sns.heatmap(data, xticklabels=positions, yticklabels=layers, cmap=custom_cmap, mask=mask)
 
