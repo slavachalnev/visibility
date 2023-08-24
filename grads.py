@@ -113,8 +113,8 @@ def compute_heatmap(model: HookedTransformer,
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-model = HookedTransformer.from_pretrained('gelu-4l', device=device)
-# model = HookedTransformer.from_pretrained('gpt2-small', device=device)
+# model = HookedTransformer.from_pretrained('gelu-4l', device=device)
+model = HookedTransformer.from_pretrained('gpt2-small', device=device)
 
 pile_data = load_dataset("NeelNanda/pile-10k", split="train")
 dataset = utils.tokenize_and_concatenate(pile_data, model.tokenizer)
