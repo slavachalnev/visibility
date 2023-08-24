@@ -44,12 +44,21 @@
 
                 Plotly.newPlot('heatmap-container', [mainHeatmap]);
 
-                // Attach hover event to the main heatmap
+                // Flag to prevent recursive hover handling
+                var isUpdating = false;
+
                 document.getElementById('heatmap-container').on('plotly_hover', function(dataPoint) {
+                    if (isUpdating) return; // Skip if update is in progress
+
                     var i = dataPoint.points[0].y;
                     var j = dataPoint.points[0].x;
-                    mainHeatmap.z = data[i][j]; // Update the z-data with the hovered heatmap
-                    Plotly.react('heatmap-container', [mainHeatmap]); // Re-render the plot with the new data
+
+                    isUpdating = true; // Set flag before updating
+                    mainHeatmap.z = data[i][j];
+
+                    Plotly.react('heatmap-container', [mainHeatmap]).then(() => {
+                        isUpdating = false; // Reset flag after update
+                    });
                 });
             });
 
