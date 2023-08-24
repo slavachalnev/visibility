@@ -13,7 +13,7 @@
         }
 
         #heatmap-container {
-            width: 400px;
+            width: 500px;
             height: 400px;
         }
     </style>
@@ -26,6 +26,23 @@
     </div>
 
     <script>
+        var layout = {
+    xaxis: {
+        title: 'Layers'
+    },
+    yaxis: {
+        title: 'Input Tokens'
+    },
+    showlegend: false,
+    margin: {
+        l: 50,
+        r: 10,
+        b: 40,
+        t: 20
+    },
+    displayModeBar: false
+};
+
 
 
         fetch('heatmaps.json')
@@ -43,7 +60,7 @@
                     hoverinfo: 'none'
                 };
 
-                Plotly.newPlot('heatmap-container', [mainHeatmap]);
+                Plotly.newPlot('heatmap-container', [mainHeatmap], layout);
 
                 // Flag to prevent recursive hover handling
                 var isUpdating = false;
@@ -57,7 +74,7 @@
                     isUpdating = true; // Set flag before updating
                     mainHeatmap.z = data[i][j];
 
-                    Plotly.react('heatmap-container', [mainHeatmap]).then(() => {
+                    Plotly.react('heatmap-container', [mainHeatmap], layout).then(() => {
                         isUpdating = false; // Reset flag after update
                     });
                 }
