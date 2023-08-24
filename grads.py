@@ -1,3 +1,8 @@
+#
+# I know there is a more efficient way to do this. Might implement later.
+# This is good enough for now.
+#
+
 # %%
 import torch
 from torch.utils.data import Dataset
@@ -47,14 +52,14 @@ def compute_grads(model: HookedTransformer, toks, position, layer):
     # Compute gradients of h wrt every state that affects h.
     h.abs().sum().backward(retain_graph=True)
 
-    grads_h_wrt_others = [torch.zeros(input_length) for _ in range(model.cfg.n_layers)]
+    # grads_h_wrt_others = [torch.zeros(input_length) for _ in range(model.cfg.n_layers)]
+    grads_h_wrt_others = torch.zeros(model.cfg.n_layers, input_length, device=model.cfg.device)
     for layer_idx in range(layer): # 0, 1, ..., layer-1
         grads = cache[f'blocks.{layer_idx}.hook_resid_post'].grad
         # compute magnitude of grads per position
         grads_h_wrt_others[layer_idx] = grads[0].abs().sum(dim=-1)
     
-    data = np.array([grad.numpy() for grad in reversed(grads_h_wrt_others)])
-    return data
+    return grads_h_wrt_others
 
 def compute_wrt_h(model: HookedTransformer, toks, position, layer):
 
@@ -62,7 +67,7 @@ def compute_wrt_h(model: HookedTransformer, toks, position, layer):
     zero_grads(model, cache)
     input_length = cache['blocks.0.hook_resid_post'].shape[1]
 
-    res = torch.zeros(model.cfg.n_layers, input_length)
+    res = torch.zeros(model.cfg.n_layers, input_length, device=model.cfg.device)
     for layer_idx in range(layer+1, model.cfg.n_layers): # layer+1, ..., n_layers-1
         for pos_idx in range(input_length):
             final = cache[f'blocks.{layer_idx}.hook_resid_post'][0, pos_idx, :]
@@ -74,7 +79,7 @@ def compute_wrt_h(model: HookedTransformer, toks, position, layer):
             res[layer_idx, pos_idx] = g
             zero_grads(model, cache)
 
-    return res.numpy()
+    return res
 
 
 def compute_heatmap(model: HookedTransformer,
@@ -83,8 +88,10 @@ def compute_heatmap(model: HookedTransformer,
                     layer: int,
                     average_over: int = 1,
                     toks_len: int = 20):
+    device = model.cfg.device
     n_layers = model.cfg.n_layers
-    heatmap = np.zeros((n_layers, toks_len))
+    # heatmap = np.zeros((n_layers, toks_len))
+    heatmap = torch.zeros(n_layers, toks_len, device=device)
     
     for i, d in enumerate(dataset):
         if i == average_over:
@@ -93,18 +100,21 @@ def compute_heatmap(model: HookedTransformer,
         # Truncate tokens to the specified length
         toks = d['tokens'][:toks_len]
 
-        others_wrt_h = compute_wrt_h(model, toks, position=position, layer=layer)[::-1]
+        others_wrt_h = compute_wrt_h(model, toks, position=position, layer=layer)
         h_wrt_others = compute_grads(model, toks, position=position, layer=layer)
 
         # Accumulate gradients
         heatmap += others_wrt_h + h_wrt_others
-
+    
+    heatmap = heatmap.to('cpu').numpy()
+    heatmap = np.flip(heatmap, axis=0)
     return heatmap
 
 
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-model = HookedTransformer.from_pretrained('gelu-4l', device='cpu')
-# model = HookedTransformer.from_pretrained('gpt2-small', device='cpu')
+model = HookedTransformer.from_pretrained('gelu-4l', device=device)
+# model = HookedTransformer.from_pretrained('gpt2-small', device=device)
 
 pile_data = load_dataset("NeelNanda/pile-10k", split="train")
 dataset = utils.tokenize_and_concatenate(pile_data, model.tokenizer)
@@ -126,7 +136,6 @@ for layer in range(n_layers):
 with open('page/heatmaps.json', 'w') as f:
     result = np.flip(result, axis=2)
     json.dump(result.tolist(), f)
-
 
 
 # %%
