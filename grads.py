@@ -128,7 +128,7 @@ result = np.zeros((n_layers, n_positions, n_layers, n_positions))
 for layer in range(n_layers):
     for position in range(n_positions):
         t0 = time.time()
-        heatmap = compute_heatmap(model, dataset, position=position, layer=layer, average_over=1, toks_len=n_positions)
+        heatmap = compute_heatmap(model, dataset, position=position, layer=layer, average_over=200, toks_len=n_positions)
         print(f'Layer {layer}, position {position} took {time.time() - t0:.2f} seconds')
         result[layer, position] = heatmap
 
